@@ -43,7 +43,7 @@ class MultiHeadCrossAttentionLayer(nn.Module):
         K = K.view(batch_size, context_seq_length, self.num_heads, self.d_head)
         V = V.view(batch_size, context_seq_length, self.num_heads, self.d_head)
 
-        print(Q.shape, K.shape, V.shape)
+        # print(Q.shape, K.shape, V.shape)
         attention = torch.einsum('bqhd,bkhd->bhqk', Q, K) / math.sqrt(self.d_head)
 
         # Apply the attention mask if using _4d_attention_mask from hf, just add the mask to the attention (0 is for tokens to attend to, -inf is for tokens to ignore)
