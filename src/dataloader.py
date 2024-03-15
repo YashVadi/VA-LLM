@@ -22,7 +22,7 @@ class ImgDataset(Dataset):
         caption = self.df.caption.iloc[idx]
         image = self.df.image.iloc[idx]
         img_path = os.path.join(self.root_dir , image)
-        img_path = "data/images/demo.jpg"
+
         img = Image.open(img_path).convert("RGB")
         
         if self.transform is not None:
@@ -32,8 +32,11 @@ class ImgDataset(Dataset):
                                  padding='max_length',
                                  max_length=self.max_length,
                                  return_tensors='pt',)
-
-        return img, captions['input_ids'].squeeze(0), captions['attention_mask'].squeeze(0)
+        return {
+                    'image': img,
+                    'input_ids': captions['input_ids'].squeeze(0),
+                    'attention_mask': captions['attention_mask'].squeeze(0)
+                }
 
 # df = pd.read_csv('data/captions.txt')
 # # print(df.head())

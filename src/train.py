@@ -88,7 +88,9 @@ class Trainer:
         self.model.train()
         train_loss = 0
         for i, data in enumerate(self.train_loader, 0):
-            img, caption, attention_mask = data
+            img = data['image']
+            caption = data ['input_ids'] 
+            attention_mask = data['attention_mask']
 
             self.optimizer.zero_grad()
             outputs = self.model(input_ids=caption, pixel_values=img, attention_mask=attention_mask, labels=caption)
@@ -108,7 +110,9 @@ class Trainer:
         val_loss = 0
         with torch.no_grad():
             for i, data in enumerate(self.val_loader, 0):
-                img, caption, attention_mask = data
+                img = data['image']
+                caption = data ['input_ids'] 
+                attention_mask = data['attention_mask']
                 outputs = self.model(input_ids=caption, pixel_values=img, attention_mask=attention_mask, labels=caption)
                 loss = outputs.loss
                 val_loss += loss.item()
@@ -139,7 +143,6 @@ class Trainer:
         wandb.finish()
         
         return self.history
-    
 
 trainer = Trainer(model, criterion, optimizer, train_loader, val_loader, "cuda")
 
