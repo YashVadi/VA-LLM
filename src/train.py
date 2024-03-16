@@ -5,9 +5,12 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
-from transformers import AutoTokenizer
+from transformers import AutoTokenize
+from transformers import AdamW, get_linear_schedule_with_warmup
 from torch.nn import functional as F
+from tqdm import tqdm
 
+from sklearn.model_selection import train_test_split
 from models.model import VALLM
 from dataloader import ImgDataset
 from torchvision import transforms
@@ -31,7 +34,7 @@ transforms = transforms.Compose(
 )
 
 
-train_df, val_df = df[:int(0.8*len(df))], df[int(0.8*len(df)):]
+train_df, val_df = train_test_split(df, test_size=0.2)
 # train_df, val_df = df[:100], df[-100:]
 
 
@@ -47,23 +50,26 @@ criterion = nn.CrossEntropyLoss()
 optimizer = optim.Adam(model.parameters(), lr=1e-4)
 
 # train the model
+# train the model
 class Trainer:
     def __init__(self, 
                  model, 
-                 criterion, 
-                 optimizer, 
+                 criterion,  
                  train_loader, 
                  val_loader, 
-                 device, 
+                 learning_rate=1e-4,
+                 device = "cuda" if torch.cuda.is_available() else "cpu", 
                  n_epochs=10, 
                  early_stopping=5, 
                  verbose=True,
                  print_every=1, 
                  ckpt_dir="./", 
-                 save_model_path="./best_model.pth"):
-        self.model = model
+                 save_model_path="./best_model.pth",
+                 num_warmup_steps=100):
+        self.model = model.to(device)
         self.criterion = criterion
-        self.optimizer = optimizer
+        self.optimizer = AdamW(self.model.parameters(), lr=learning_rate)
+        self.scheduler = get_linear_schedule_with_warmup(self.optimizer, num_warmup_steps=num_warmup_steps, num_training_steps=len(train_loader) * n_epochs)
         self.train_loader = train_loader
         self.val_loader = val_loader
         self.device = device
@@ -74,34 +80,38 @@ class Trainer:
         self.save_model_path = save_model_path
         self.best_loss = float("inf")
         self.print_every = print_every
+        self.ckpt_freq = 100
         self.counter = 0
         self.history = {"train_loss": [], "val_loss": []}
         self.step = 0
+        self.prog_bar = None
         
     def logger(self, log_dict):
-        if self.verbose and self.step % self.print_every == 0:
-            # for message in log_dict:
-            print(str([message + ": " + str(log_dict[message]) for message in log_dict]))
         wandb.log(log_dict)
 
     def train_epoch(self):
         self.model.train()
         train_loss = 0
         for i, data in enumerate(self.train_loader, 0):
-            img = data['image']
-            caption = data ['input_ids'] 
-            attention_mask = data['attention_mask']
-
+            img = data['image'].to(self.device)
+            caption = data['input_ids'].to(self.device)
+            attention_mask = data['attention_mask'].to(self.device)
+            
             self.optimizer.zero_grad()
             outputs = self.model(input_ids=caption, pixel_values=img, attention_mask=attention_mask, labels=caption)
             loss = outputs.loss
 
             loss.backward()
             self.optimizer.step()
+            self.scheduler.step()
             train_loss += loss.item()
 
             self.step += 1
             self.logger({"Train Loss": loss.item(), "Step": self.step})
+            if self.step % self.ckpt_freq == 0:
+                torch.save(self.model.state_dict(), self.ckpt_dir + "ckpt_" + str(self.step) + ".pth")
+            self.prog_bar.set_postfix({"Train Loss": train_loss / (i+1)})
+            self.prog_bar.update(1)
 
         return train_loss / len(self.train_loader)
     
@@ -110,9 +120,9 @@ class Trainer:
         val_loss = 0
         with torch.no_grad():
             for i, data in enumerate(self.val_loader, 0):
-                img = data['image']
-                caption = data ['input_ids'] 
-                attention_mask = data['attention_mask']
+                img = data['image'].to(self.device)
+                caption = data['input_ids'].to(self.device)
+                attention_mask = data['attention_mask'].to(self.device)
                 outputs = self.model(input_ids=caption, pixel_values=img, attention_mask=attention_mask, labels=caption)
                 loss = outputs.loss
                 val_loss += loss.item()
@@ -121,6 +131,12 @@ class Trainer:
     
     def train(self):
         wandb.init(project="image-captioning")
+        self.prog_bar = tqdm(range(len(train_loader)*self.n_epochs))
+
+        #print total number of parameters  and trainable params in the model
+        total_params = sum(p.numel() for p in self.model.parameters())
+        trainable_params = sum(p.numel() for p in self.model.parameters() if p.requires_grad)
+        self.logger({"Total Parameters": total_params, "Trainable Parameters": trainable_params})
 
         for epoch in range(self.n_epochs):
             train_loss = self.train_epoch()
