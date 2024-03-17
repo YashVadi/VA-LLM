@@ -1,6 +1,6 @@
 # create the train loop
 import pandas as pd
-
+import os
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -76,7 +76,6 @@ class Trainer:
         self.n_epochs = n_epochs
         self.early_stopping = early_stopping
         self.verbose = verbose
-        self.ckpt_dir = ckpt_dir
         self.save_model_path = save_model_path
         self.best_loss = float("inf")
         self.print_every = print_every
@@ -85,6 +84,13 @@ class Trainer:
         self.history = {"train_loss": [], "val_loss": []}
         self.step = 0
         self.prog_bar = None
+
+        wandb.init(project="image-captioning")
+        wandb.watch(self.model)
+        self.run_id = wandb.run.id
+        self.ckpt_dir = os.path.join(ckpt_dir, self.run_id)
+        os.makedirs(self.ckpt_dir, exist_ok=True)
+
         
     def logger(self, log_dict):
         wandb.log(log_dict)
@@ -130,7 +136,6 @@ class Trainer:
         return val_loss / len(self.val_loader)
     
     def train(self):
-        wandb.init(project="image-captioning")
         self.prog_bar = tqdm(range(len(train_loader)*self.n_epochs))
 
         #print total number of parameters  and trainable params in the model

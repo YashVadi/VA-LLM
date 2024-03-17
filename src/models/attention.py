@@ -14,7 +14,8 @@ class MultiHeadCrossAttentionLayer(nn.Module):
         self.num_heads = num_heads
         self.d_head = d_model // num_heads
         
-        self.project_aug = nn.Linear(d_context, d_model)
+        self.project_aug_1 = nn.Linear(d_context, d_model)
+        self.project_aug_2 = nn.Linear(d_model, d_model)
         # Learnable weight matrices
         self.WQ = nn.Parameter(torch.randn(d_model, d_model), requires_grad=True)
         self.WK = nn.Parameter(torch.randn(d_model, d_model), requires_grad=True)
@@ -31,7 +32,8 @@ class MultiHeadCrossAttentionLayer(nn.Module):
             attention_mask = torch.ones((batch_size, seq_length, context_seq_length), device=device)
         
         # Project the context hidden states
-        context_hidden_states = self.project_aug(context_hidden_states)
+        context_hidden_states = F.gelu(self.project_aug_1(context_hidden_states))
+        context_hidden_states = self.project_aug_2(context_hidden_states)
         
         # Calculate the queries, keys and values
         Q = torch.matmul(hidden_states, self.WQ)

@@ -8,12 +8,12 @@ from transformers import AutoTokenizer
 from torchvision import transforms
 
 class ImgDataset(Dataset):
-    def __init__(self, df,root_dir,tokenizer,transform =None):
+    def __init__(self, df,root_dir,tokenizer,transform =None, max_length=50):
         self.df = df
         self.transform = transform
         self.root_dir = root_dir
         self.tokenizer= tokenizer
-        self.max_length = 50
+        self.max_length = max_length
 
     def __len__(self,):
         return len(self.df)
@@ -31,6 +31,7 @@ class ImgDataset(Dataset):
         captions = self.tokenizer(caption,
                                  padding='max_length',
                                  max_length=self.max_length,
+                                 truncation=True,
                                  return_tensors='pt',)
         return {
                     'image': img,
