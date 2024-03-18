@@ -30,46 +30,50 @@ class Trainer:
     def __init__(self, 
                  model,
                  criterion,  
-                 train_loader, 
-                 val_loader,
-                 config_path='./config.json',
+                 train_data,
+                 val_data,
+                 training_config,
+                 model_config,
+                 logging_config,
                  device = "cuda" if torch.cuda.is_available() else "cpu",
                  verbose=True,
-                 print_every=1, 
-                 ckpt_dir="./", 
-                 save_model_path="./best_model.pth",
+                 print_every=1,
                  ):
-
-        config = json.load(open(config_path))
-        training_config, model_config = config['training_config'], config['model_config']
 
         lr = training_config['learning_rate']
         num_warmup_steps = training_config['warmup_steps']
         n_epochs = training_config['epochs']
         early_stopping = training_config['early_stopping']
-        ckpt_freq = training_config['ckpt_freq']
         weight_decay = training_config['weight_decay']
+        batch_size = training_config['batch_size']
+
+        ckpt_freq = logging_config['ckpt_freq']
+        ckpt_dir = logging_config['ckpt_dir']
+        project_name = logging_config['project_name']
+        save_model_path = logging_config['save_model_path']
 
         self.model = model(model_config).to(device)
         self.criterion = criterion
         self.optimizer = AdamW(self.model.parameters(), lr=lr, weight_decay=weight_decay)
-        self.scheduler = get_linear_schedule_with_warmup(self.optimizer, num_warmup_steps=num_warmup_steps, num_training_steps=len(train_loader) * n_epochs)
-        self.train_loader = train_loader
-        self.val_loader = val_loader
+        self.train_loader = DataLoader(train_data, batch_size=batch_size, shuffle=True)
+        self.val_loader = DataLoader(val_data, batch_size=batch_size, shuffle=True)
+        self.scheduler = get_linear_schedule_with_warmup(self.optimizer, num_warmup_steps=num_warmup_steps,
+                                                         num_training_steps=len(self.train_loader) * n_epochs)
         self.device = device
         self.n_epochs = n_epochs
         self.early_stopping = early_stopping
         self.verbose = verbose
-        self.save_model_path = save_model_path
         self.best_loss = float("inf")
         self.print_every = print_every
-        self.ckpt_freq = ckpt_freq
         self.counter = 0
         self.history = {"train_loss": [], "val_loss": []}
         self.step = 0
         self.prog_bar = None
 
-        wandb.init(project="image-captioning")
+        self.ckpt_freq = ckpt_freq
+        self.save_model_path = save_model_path
+
+        wandb.init(project=project_name)
         wandb.watch(self.model)
         self.run_id = wandb.run.id
         self.ckpt_dir = os.path.join(ckpt_dir, self.run_id)
@@ -120,7 +124,7 @@ class Trainer:
         return val_loss / len(self.val_loader)
     
     def train(self):
-        self.prog_bar = tqdm(range(len(train_loader)*self.n_epochs))
+        self.prog_bar = tqdm(range(len(self.train_loader)*self.n_epochs))
 
         #print total number of parameters  and trainable params in the model
         total_params = sum(p.numel() for p in self.model.parameters())
@@ -131,7 +135,7 @@ class Trainer:
             train_loss = self.train_epoch()
             val_loss = self.val_epoch()
 
-            self.logger({"Epoch": epoch, "Train Loss": train_loss, "Val Loss": val_loss, "Epoch": epoch})
+            self.logger({"Epoch": epoch, "Train Loss": train_loss, "Val Loss": val_loss})
             self.history["train_loss"].append(train_loss)
             self.history["val_loss"].append(val_loss)
 
@@ -150,12 +154,17 @@ class Trainer:
         return self.history
 
 config_path='src/config.json'
+config = json.load(open(config_path))
+training_config, model_config, data_config, logging_config = config['training_config'], config['model_config'], config['data_config'], config['logging_config']
+
 criterion = nn.CrossEntropyLoss()
+
 # load the data
-df = pd.read_csv('data/captions.txt')
-tokenizer = AutoTokenizer.from_pretrained("gpt2")
+df = pd.read_csv(data_config['caption_data_path'])
+tokenizer = AutoTokenizer.from_pretrained(model_config['anchor_model'])
 tokenizer.pad_token = tokenizer.eos_token
 
+# Ref: https://github.com/openai/CLIP/blob/main/clip/clip.py#L79
 def _convert_image_to_rgb(image):
     return image.convert("RGB")
 
@@ -167,17 +176,20 @@ transforms = Compose([
         Normalize((0.48145466, 0.4578275, 0.40821073), (0.26862954, 0.26130258, 0.27577711)),
     ])
 
-train_df, val_df = train_test_split(df, test_size=0.2)
-# train_df, val_df = df[:100], df[-100:]
+train_df, val_df = train_test_split(df, test_size=data_config['test_size'])
 
+train_dataset = ImgDataset(train_df, root_dir=data_config['image_data_root'], tokenizer=tokenizer, transform=transforms)
+val_dataset = ImgDataset(val_df, root_dir=data_config['image_data_root'], tokenizer=tokenizer, transform=transforms)
 
-train_dataset = ImgDataset(train_df,root_dir= "data/images", tokenizer=tokenizer, transform=transforms)
-val_dataset = ImgDataset(val_df,root_dir= "data/images", tokenizer=tokenizer, transform=transforms)
-
-train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
-val_loader = DataLoader(val_dataset, batch_size=32, shuffle=True)
-
-trainer = Trainer(VALLM, criterion, train_loader, val_loader, config_path=config_path)
+trainer = Trainer(
+    model=VALLM,
+    criterion=criterion,
+    train_data=train_dataset,
+    val_data=val_dataset,
+    training_config=training_config,
+    model_config=model_config,
+    logging_config=logging_config
+)
 
 history = trainer.train()
 

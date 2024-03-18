@@ -4,9 +4,23 @@
     "warmup_steps": 100,
     "epochs": 10,
     "early_stopping": 5,
-    "ckpt_freq": 100,
-    "weight_decay": 0
+    "weight_decay": 0,
+    "batch_size": 16
   },
+
+  "data_config": {
+    "image_data_root": "data/images",
+    "caption_data_path": "data/captions.txt",
+    "test_size": 0.2
+  },
+
+  "logging_config": {
+    "project_name": "image-captioning",
+    "ckpt_dir": "./",
+    "ckpt_freq": 100,
+    "save_model_path": "./best_model.pth"
+  },
+
   "model_config": {
     "num_attn_heads": 4,
     "layer_connections": [[6,6], [10,10]],
