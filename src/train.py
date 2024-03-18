@@ -9,6 +9,7 @@ from transformers import AutoTokenize
 from transformers import AdamW, get_linear_schedule_with_warmup
 from torch.nn import functional as F
 from tqdm import tqdm
+import json
 
 from sklearn.model_selection import train_test_split
 from models.model import VALLM
@@ -17,11 +18,6 @@ from torchvision import transforms
 
 import wandb
 
-# load the model
-# model = VALLM()
-# optimizer = optim.Adam(model.parameters(), lr=1e-4)
-
-# train the model
 # train the model
 class Trainer:
     def __init__(self, 
@@ -37,7 +33,7 @@ class Trainer:
                  save_model_path="./best_model.pth",
                  ):
 
-        config = pd.read_json(config_path)
+        config = json.load(open(config_path))
         training_config, model_config = config['training_config'], config['model_config']
 
         lr = training_config['learning_rate']
@@ -146,7 +142,7 @@ class Trainer:
         
         return self.history
 
-config_path='./config.json'
+config_path='src/config.json'
 criterion = nn.CrossEntropyLoss()
 # load the data
 df = pd.read_csv('data/captions.txt')
