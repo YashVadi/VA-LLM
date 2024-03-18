@@ -5,16 +5,23 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
-from transformers import AutoTokenize
+from transformers import AutoTokenizer
 from transformers import AdamW, get_linear_schedule_with_warmup
 from torch.nn import functional as F
 from tqdm import tqdm
 import json
+from PIL import Image
 
 from sklearn.model_selection import train_test_split
 from models.model import VALLM
 from dataloader import ImgDataset
-from torchvision import transforms
+from torchvision.transforms import Compose, Resize, CenterCrop, ToTensor, Normalize
+
+try:
+    from torchvision.transforms import InterpolationMode
+    BICUBIC = InterpolationMode.BICUBIC
+except ImportError:
+    BICUBIC = Image.BICUBIC
 
 import wandb
 
@@ -149,17 +156,16 @@ df = pd.read_csv('data/captions.txt')
 tokenizer = AutoTokenizer.from_pretrained("gpt2")
 tokenizer.pad_token = tokenizer.eos_token
 
-transforms = transforms.Compose(
-    [
-        transforms.Resize((224,224)),
-        transforms.ToTensor(),
-        transforms.Normalize(
-            mean=0.5,
-            std=0.5
-        )
-   ]
-)
+def _convert_image_to_rgb(image):
+    return image.convert("RGB")
 
+transforms = Compose([
+        Resize((224,224), interpolation=BICUBIC),
+        CenterCrop((224,224)),
+        _convert_image_to_rgb,
+        ToTensor(),
+        Normalize((0.48145466, 0.4578275, 0.40821073), (0.26862954, 0.26130258, 0.27577711)),
+    ])
 
 train_df, val_df = train_test_split(df, test_size=0.2)
 # train_df, val_df = df[:100], df[-100:]
