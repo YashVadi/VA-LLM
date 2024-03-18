@@ -21,6 +21,11 @@ class MultiHeadCrossAttentionLayer(nn.Module):
         self.WK = nn.Parameter(torch.randn(d_model, d_model), requires_grad=True)
         self.WV = nn.Parameter(torch.randn(d_model, d_model), requires_grad=True)
         self.WO = nn.Parameter(torch.randn(d_model, d_model), requires_grad=True)
+
+        nn.init.xavier_uniform_(self.WQ)
+        nn.init.xavier_uniform_(self.WK)
+        nn.init.xavier_uniform_(self.WV)
+        nn.init.xavier_uniform_(self.WO)
         
     def forward(self, hidden_states, context_hidden_states, attention_mask:Optional[torch.Tensor]=None):
 

@@ -13,7 +13,12 @@ from typing import List, Tuple, Optional
 from torch.nn import CrossEntropyLoss 
 
 class VALLM(nn.Module):
-    def __init__(self, llm:str = "gpt2", vit:str = "openai/clip-vit-base-patch32", llm_enc =gpt_embed, llm_blocks=gpt_modules, llm_ln_lmhead=gpt_ln_lmhead,connections=[[6,6],[10,10]]):
+    def __init__(self,
+                 config,
+                 llm_enc = gpt_embed,
+                 llm_blocks = gpt_modules,
+                 llm_ln_lmhead = gpt_ln_lmhead
+                 ):
         """
         Args:
             llm: str, the name of the language model
@@ -24,9 +29,9 @@ class VALLM(nn.Module):
             connections: list of lists, the connections between the layers
         """
         super(VALLM, self).__init__()
-        self.llm = AutoModelForCausalLM.from_pretrained(llm)
-        self.vit = CLIPVisionModel.from_pretrained(vit)
-        self.vit_processor = CLIPProcessor.from_pretrained(vit)
+        self.llm = AutoModelForCausalLM.from_pretrained(config['anchor_model'])
+        self.vit = CLIPVisionModel.from_pretrained(config['augmenting_model'])
+        self.vit_processor = CLIPProcessor.from_pretrained(config['augmenting_model'])
         
         self.llm_enc = llm_enc
         self.llm_blocks = llm_blocks
@@ -40,18 +45,19 @@ class VALLM(nn.Module):
 
         self.llm_dim = self.llm.config.hidden_size
         self.vit_dim = self.vit.config.hidden_size
+        self.layer_connections = config['layer_connections']
 
 
-        self.conn = nn.ModuleList([MultiHeadCrossAttentionLayer(self.llm_dim, self.vit_dim, 4) for i in range(len(connections))])
+        self.conn = nn.ModuleList([MultiHeadCrossAttentionLayer(self.llm_dim, self.vit_dim, config['num_attn_heads']) for i in range(len(self.layer_connections))])
 
         # make conn trainable
         for conn in self.conn:
             for param in conn.parameters():
                 param.requires_grad = True
 
-        self.llm_conn = {elem[0]: elem[1] for elem in connections}
-        self.vit_conn = {elem[1]: elem[0] for elem in connections}
-        self.connections = {elem[0]: i for i, elem in enumerate(connections)}
+        self.llm_conn = {elem[0]: elem[1] for elem in self.layer_connections}
+        self.vit_conn = {elem[1]: elem[0] for elem in self.layer_connections}
+        self.connections = {elem[0]: i for i, elem in enumerate(self.layer_connections)}
 
     def forward(self, input_ids, pixel_values, attention_mask=None, labels=None):
         device = input_ids.device
