@@ -11,6 +11,10 @@
     "num_attn_heads": 4,
     "layer_connections": [[6,6], [10,10]],
     "anchor_model": "gpt2",
-    "augmenting_model": "openai/clip-vit-base-patch32"
+    "augmenting_model": "openai/clip-vit-base-patch32",
+    "anchor_output_weight": 1,
+    "augment_output_weight": 1,
+    "freeze_anchor_params": true,
+    "freeze_augment_params": true
   }
 }

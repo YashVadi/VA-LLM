@@ -21,12 +21,9 @@ class VALLM(nn.Module):
                  ):
         """
         Args:
-            llm: str, the name of the language model
-            vit: str, the name of the vision model
             llm_enc: function, a function to get the encoder of the language model
             llm_blocks: function, a function to get the blocks of the language model
             llm_ln_lmhead: function, a function to apply the layer normalization and the lm_head given the language model and last hidden state
-            connections: list of lists, the connections between the layers
         """
         super(VALLM, self).__init__()
         self.llm = AutoModelForCausalLM.from_pretrained(config['anchor_model'])
@@ -38,14 +35,20 @@ class VALLM(nn.Module):
         self.llm_ln_lmhead = llm_ln_lmhead
 
         # freeze the parameters
-        for param in self.llm.parameters():
-            param.requires_grad = False
-        for param in self.vit.parameters():
-            param.requires_grad = False
+        if config['freeze_anchor_params']:
+            for param in self.llm.parameters():
+                param.requires_grad = False
+
+        if config['freeze_augment_params']:
+            for param in self.vit.parameters():
+                param.requires_grad = False
 
         self.llm_dim = self.llm.config.hidden_size
         self.vit_dim = self.vit.config.hidden_size
         self.layer_connections = config['layer_connections']
+
+        self.anchor_output_weight = config['anchor_output_weight']
+        self.augment_output_weight = config['augment_output_weight']
 
 
         self.conn = nn.ModuleList([MultiHeadCrossAttentionLayer(self.llm_dim, self.vit_dim, config['num_attn_heads']) for i in range(len(self.layer_connections))])
@@ -80,7 +83,7 @@ class VALLM(nn.Module):
         for i, layer_module in enumerate(self.llm_blocks(self.llm)):
             llm_hs = layer_module(llm_hs)[0]
             if i in self.llm_conn.keys():
-                llm_hs = llm_hs + self.conn[self.connections[i]](llm_hs , cached_vit_hs[self.llm_conn[i]])
+                llm_hs = self.anchor_output_weight * llm_hs + self.augment_output_weight * self.conn[self.connections[i]](llm_hs , cached_vit_hs[self.llm_conn[i]])
         
         logits = self.llm_ln_lmhead(self.llm, llm_hs)
 
