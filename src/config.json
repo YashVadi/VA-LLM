@@ -5,7 +5,7 @@
     "epochs": 10,
     "early_stopping": 5,
     "weight_decay": 0,
-    "batch_size": 16
+    "batch_size": 8
   },
 
   "data_config": {
@@ -17,12 +17,12 @@
   "logging_config": {
     "project_name": "image-captioning",
     "ckpt_dir": "./",
-    "ckpt_freq": 100,
-    "save_model_path": "./best_model.pth"
+    "ckpt_freq": 1500,
+    "save_model_path": "best_model.pth"
   },
 
   "model_config": {
-    "num_attn_heads": 4,
+    "num_attn_heads": 8,
     "layer_connections": [[6,6], [10,10]],
     "anchor_model": "gpt2",
     "augmenting_model": "openai/clip-vit-base-patch32",

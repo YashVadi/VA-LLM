@@ -71,6 +71,7 @@ class Trainer:
         self.prog_bar = None
 
         self.ckpt_freq = ckpt_freq
+        self.max_checkpoints = 10
         self.save_model_path = save_model_path
 
         nested_config = {"training_config": training_config, "model_config": model_config, "logging_config": logging_config}
@@ -104,7 +105,8 @@ class Trainer:
             self.step += 1
             self.logger({"Train Loss": loss.item(), "Step": self.step})
             if self.step % self.ckpt_freq == 0:
-                torch.save(self.model.state_dict(), self.ckpt_dir + "ckpt_" + str(self.step) + ".pth")
+                torch.save(self.model.state_dict(), os.path.join(self.ckpt_dir, "ckpt_" + str(self.step) + ".pth"))
+            ## delete old checkpoints if there are more than max_checkpoints
             self.prog_bar.set_postfix({"Train Loss": train_loss / (i+1)})
             self.prog_bar.update(1)
 
@@ -142,7 +144,7 @@ class Trainer:
 
             if val_loss < self.best_loss:
                 self.best_loss = val_loss
-                torch.save(self.model.state_dict(), self.save_model_path)
+                torch.save(self.model.state_dict(), os.path.join(self.ckpt_dir, self.save_model_path))
                 self.counter = 0
             else:
                 self.counter += 1
