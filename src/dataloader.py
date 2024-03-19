@@ -8,7 +8,7 @@ from transformers import AutoTokenizer
 from torchvision import transforms
 
 class ImgDataset(Dataset):
-    def __init__(self, df,root_dir,tokenizer,transform =None, max_length=50):
+    def __init__(self, df, root_dir, tokenizer, transform=None, max_length=50):
         self.df = df
         self.transform = transform
         self.root_dir = root_dir
