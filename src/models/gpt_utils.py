@@ -1,6 +1,4 @@
 import torch
-import torch.nn as nn
-from torch.nn import functional as F
 
 def gpt_ln_lmhead(model, hs):
     hs = model.transformer.ln_f(hs)

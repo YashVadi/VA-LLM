@@ -2,10 +2,6 @@ import torch
 from torch.utils.data import Dataset
 import os
 from PIL import Image
-import pandas as pd
-import numpy as np
-from transformers import AutoTokenizer
-from torchvision import transforms
 
 class ImgDataset(Dataset):
     def __init__(self, df, root_dir, tokenizer, transform=None, max_length=50):

@@ -1,5 +1,4 @@
 # create the train loop
-import pandas as pd
 import os
 import torch
 from torch.utils.data import DataLoader

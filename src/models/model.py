@@ -1,15 +1,11 @@
-import torch
 import torch.nn as nn
 from transformers import  AutoModelForCausalLM, AutoModel
 from transformers import CLIPProcessor, CLIPVisionModel
-from torch.nn import functional as F
 from transformers.modeling_outputs import CausalLMOutput
 
 from models.attention import MultiHeadCrossAttentionLayer
 from models.gpt_utils import gpt_ln_lmhead, gpt_modules, gpt_embed
 
-from transformers.modeling_attn_mask_utils import _prepare_4d_causal_attention_mask, AttentionMaskConverter
-from typing import List, Tuple, Optional
 from torch.nn import CrossEntropyLoss 
 
 class VALLM(nn.Module):
