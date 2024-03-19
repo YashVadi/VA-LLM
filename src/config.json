@@ -5,7 +5,8 @@
     "epochs": 10,
     "early_stopping": 5,
     "weight_decay": 0,
-    "batch_size": 8
+    "train_batch_size": 8,
+    "validation_batch_size": 16
   },
 
   "data_config": {
