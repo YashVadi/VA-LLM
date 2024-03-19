@@ -73,7 +73,8 @@ class Trainer:
         self.ckpt_freq = ckpt_freq
         self.save_model_path = save_model_path
 
-        wandb.init(project=project_name)
+        nested_config = {"training_config": training_config, "model_config": model_config, "logging_config": logging_config}
+        wandb.init(project=project_name, config=nested_config)
         wandb.watch(self.model)
         self.run_id = wandb.run.id
         self.ckpt_dir = os.path.join(ckpt_dir, self.run_id)
