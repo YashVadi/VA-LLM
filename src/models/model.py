@@ -1,19 +1,25 @@
 import torch.nn as nn
+import torch
 from transformers import  AutoModelForCausalLM, AutoModel
 from transformers import CLIPProcessor, CLIPVisionModel
 from transformers.modeling_outputs import CausalLMOutput
 
 from models.attention import MultiHeadCrossAttentionLayer
 from models.gpt_utils import gpt_ln_lmhead, gpt_modules, gpt_embed
+from models.stableLM_utils import stableLM_ln_lmhead, stableLM_modules, stableLM_embed
+# from attention import MultiHeadCrossAttentionLayer
+# from gpt_utils import gpt_ln_lmhead, gpt_modules, gpt_embed
+# from stableLM_utils import stableLM_ln_lmhead, stableLM_modules, stableLM_embed
+from transformers.modeling_attn_mask_utils import _prepare_4d_causal_attention_mask
 
 from torch.nn import CrossEntropyLoss 
 
 class VALLM(nn.Module):
     def __init__(self,
                  config,
-                 llm_enc = gpt_embed,
-                 llm_blocks = gpt_modules,
-                 llm_ln_lmhead = gpt_ln_lmhead
+                 llm_enc = stableLM_embed,
+                 llm_blocks = stableLM_modules,
+                 llm_ln_lmhead = stableLM_ln_lmhead
                  ):
         """
         Args:
@@ -73,11 +79,23 @@ class VALLM(nn.Module):
                 cached_vit_hs[i] = vit_hs
             # break if the layer is the last layer we need to cache
             if i == max(self.vit_conn.keys()):
-                break   
+                break
         
+        batch_size, seq_length = input_ids.shape
+
         llm_hs = self.llm_enc(self.llm, input_ids)
+
+        if attention_mask is None:
+            attention_mask = torch.ones((batch_size, seq_length), device=device)
+
+        position_ids = torch.arange(seq_length, dtype=torch.long, device=device).unsqueeze(0).expand(batch_size, -1)
+
+        attention_mask_4d = _prepare_4d_causal_attention_mask(
+            attention_mask, (batch_size, seq_length), llm_hs, 0
+        )
+        
         for i, layer_module in enumerate(self.llm_blocks(self.llm)):
-            llm_hs = layer_module(llm_hs)[0]
+            llm_hs = layer_module(llm_hs,attention_mask=attention_mask_4d, position_ids=position_ids)[0]
             if i in self.llm_conn.keys():
                 llm_hs = self.anchor_output_weight * llm_hs + self.augment_output_weight * self.conn[self.connections[i]](llm_hs , cached_vit_hs[self.llm_conn[i]])
         
@@ -88,9 +106,11 @@ class VALLM(nn.Module):
             # Shift so that tokens < n predict n
             shift_logits = logits[..., :-1, :].contiguous()
             shift_labels = labels[..., 1:].contiguous()
+            shift_masks = attention_mask[..., 1:].contiguous()
             # Flatten the tokens
-            loss_fct = CrossEntropyLoss()
-            loss = loss_fct(shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1))
+            loss_fct = CrossEntropyLoss(reduction="none")
+            loss_batch = loss_fct(shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1))
+            loss = torch.sum(loss_batch * shift_masks.view(-1)) / torch.sum(shift_masks) 
 
 
         return CausalLMOutput(
@@ -99,17 +119,3 @@ class VALLM(nn.Module):
             hidden_states=None,
             attentions=None,
         )
-
-
-# model = CLIPVisionModel.from_pretrained("openai/clip-vit-base-patch32")
-# processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32")
-
-# model = VALLM()
-
-# print(model)
-# print(torch.tensor([[1,2,3]]).shape, torch.zeros(1, 3, 224, 224).shape)
-# model_pre = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32")
-# out = model(torch.ones(2,5).long(), torch.zeros(2, 3, 224, 224).long())
-    
-# out = AttentionMaskConverter(is_causal=True).to_causal_4d(1,3,3, torch.float32)
-# print(out.shape)

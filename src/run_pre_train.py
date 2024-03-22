@@ -15,8 +15,12 @@ try:
     BICUBIC = InterpolationMode.BICUBIC
 except ImportError:
     BICUBIC = Image.BICUBIC
+    
+import os
 
-config_path='/home/vdhee/scratch/Nikhil/VA_LLM/VA-LLM/src/config.json'
+temp_dir = os.environ["SLURM_TMPDIR"]
+
+config_path='/home/vdhee/scratch/Nikhil/VA_LLM/VA-LLM/src/pre_train_config.json'
 config = json.load(open(config_path))
 training_config, model_config, data_config, logging_config = config['training_config'], config['model_config'], config['data_config'], config['logging_config']
 
@@ -27,6 +31,7 @@ df = pd.read_csv(data_config['caption_data_path'])
 tokenizer = AutoTokenizer.from_pretrained(model_config['anchor_model'])
 tokenizer.pad_token = tokenizer.eos_token
 
+print("Read CSV")
 # Ref: https://github.com/openai/CLIP/blob/main/clip/clip.py#L79
 def _convert_image_to_rgb(image):
     return image.convert("RGB")
@@ -43,16 +48,15 @@ train_df, val_df = train_test_split(df, test_size=data_config['test_size'])
 
 # train_df = train_df[:16]
 # val_df = val_df[:32]
-train_dataset = ImgDataset(train_df, root_dir=data_config['image_data_root'], tokenizer=tokenizer, transform=transforms)
-val_dataset = ImgDataset(val_df, root_dir=data_config['image_data_root'], tokenizer=tokenizer, transform=transforms)
+train_dataset = ImgDataset(train_df, root_dir=os.path.join(temp_dir, data_config['image_data_root']), tokenizer=tokenizer, transform=transforms)
+val_dataset = ImgDataset(val_df, root_dir=os.path.join(temp_dir, data_config['image_data_root']), tokenizer=tokenizer, transform=transforms)
 
 def data_collator(examples):
 
-    batch= tokenizer([example['text'] for example in examples], padding="longest", return_tensors="pt", return_attention_mask=True, max_length="512")
+    batch= tokenizer([example['text'] for example in examples], padding="longest", return_tensors="pt", return_attention_mask=True)
     batch['image'] = torch.stack([example['image'] for example in examples])
 
     return batch
-
 
 trainer = Trainer(
     model=VALLM,

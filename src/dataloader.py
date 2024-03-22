@@ -17,22 +17,16 @@ class ImgDataset(Dataset):
     def __getitem__(self,idx):
         caption = self.df.caption.iloc[idx]
         image = self.df.image.iloc[idx]
-        img_path = os.path.join(self.root_dir , image)
+        img_path = os.path.join(self.root_dir , image.split("/")[-1])
 
         img = Image.open(img_path).convert("RGB")
         
         if self.transform is not None:
             img= self.transform(img)
 
-        captions = self.tokenizer(caption,
-                                 padding='max_length',
-                                 max_length=self.max_length,
-                                 truncation=True,
-                                 return_tensors='pt',)
         return {
                     'image': img,
-                    'input_ids': captions['input_ids'].squeeze(0),
-                    'attention_mask': captions['attention_mask'].squeeze(0)
+                    'text': caption
                 }
 
 # df = pd.read_csv('data/captions.txt')

@@ -14,9 +14,11 @@ class Trainer:
                  criterion,  
                  train_data,
                  val_data,
+                 collate_fn,
                  training_config,
                  model_config,
                  logging_config,
+                 data_config,
                  device = "cuda" if torch.cuda.is_available() else "cpu",
                  verbose=True,
                  print_every=1,
@@ -34,12 +36,13 @@ class Trainer:
         ckpt_dir = logging_config['ckpt_dir']
         project_name = logging_config['project_name']
         save_model_path = logging_config['save_model_path']
+        save_model_conn_path = logging_config['save_model_conn_path']
 
         self.model = model(model_config).to(device)
         self.criterion = criterion
         self.optimizer = AdamW(self.model.parameters(), lr=lr, weight_decay=weight_decay)
-        self.train_loader = DataLoader(train_data, batch_size=train_batch_size, shuffle=True)
-        self.val_loader = DataLoader(val_data, batch_size=validation_batch_size, shuffle=True)
+        self.train_loader = DataLoader(train_data, batch_size=train_batch_size, shuffle=True, collate_fn=collate_fn)
+        self.val_loader = DataLoader(val_data, batch_size=validation_batch_size, shuffle=False, collate_fn=collate_fn)
         self.scheduler = get_linear_schedule_with_warmup(self.optimizer, num_warmup_steps=num_warmup_steps,
                                                          num_training_steps=len(self.train_loader) * n_epochs)
         self.device = device
@@ -56,8 +59,9 @@ class Trainer:
         self.ckpt_freq = ckpt_freq
         self.max_checkpoints = 10
         self.save_model_path = save_model_path
+        self.save_model_conn_path = save_model_conn_path
 
-        nested_config = {"training_config": training_config, "model_config": model_config, "logging_config": logging_config}
+        nested_config = {"training_config": training_config, "model_config": model_config, "logging_config": logging_config, "data_config":data_config}
         wandb.init(project=project_name, config=nested_config)
         wandb.watch(self.model)
         self.run_id = wandb.run.id
@@ -89,6 +93,7 @@ class Trainer:
             self.logger({"Train Loss": loss.item(), "Step": self.step})
             if self.step % self.ckpt_freq == 0:
                 torch.save(self.model.state_dict(), os.path.join(self.ckpt_dir, "ckpt_" + str(self.step) + ".pth"))
+                torch.save(self.model.conn.state_dict(), os.path.join(self.ckpt_dir, "conn_ckpt_" + str(self.step) + ".pth"))
             ## delete old checkpoints if there are more than max_checkpoints
             self.prog_bar.set_postfix({"Train Loss": train_loss / (i+1)})
             self.prog_bar.update(1)
@@ -128,6 +133,7 @@ class Trainer:
             if val_loss < self.best_loss:
                 self.best_loss = val_loss
                 torch.save(self.model.state_dict(), os.path.join(self.ckpt_dir, self.save_model_path))
+                torch.save(self.model.conn.state_dict(), os.path.join(self.ckpt_dir, self.save_model_conn_path))
                 self.counter = 0
             else:
                 self.counter += 1
