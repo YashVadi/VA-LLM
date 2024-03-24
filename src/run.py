@@ -47,8 +47,35 @@ train_dataset = ImgDataset(train_df, root_dir=data_config['image_data_root'], to
 val_dataset = ImgDataset(val_df, root_dir=data_config['image_data_root'], tokenizer=tokenizer, transform=transforms)
 
 def data_collator(examples):
+    max_tokenized_length = -1
+    tokenized_input = []
+    for i, ex in enumerate(examples):
+        inputs = tokenizer.apply_chat_template(ex, add_generation_prompt=False, return_tensors='pt', return_dict=True, max_length=512)
+        max_tokenized_length = max(max_tokenized_length, inputs['input_ids'].shape[1])
+        tokenized_input.append(inputs)
 
-    batch= tokenizer([example['text'] for example in examples], padding="longest", return_tensors="pt", return_attention_mask=True, max_length="512")
+    for inputs in tokenized_input:
+        input_ids = inputs['input_ids']
+        attention_mask = inputs['attention_mask']
+        padding_length = max_tokenized_length - input_ids.shape[1]
+
+        # Add padding tokens
+        padding_tokens = torch.full((input_ids.shape[0], padding_length), tokenizer.eos_token_id, dtype=torch.long)
+        input_ids = torch.cat((input_ids, padding_tokens), dim=1)
+
+        # Add zeros in the attention mask field
+        padding_attention_mask = torch.zeros((input_ids.shape[0], padding_length), dtype=torch.long)
+        attention_mask = torch.cat((attention_mask, padding_attention_mask), dim=1)
+
+        # Update inputs dictionary
+        inputs['input_ids'] = input_ids
+        inputs['attention_mask'] = attention_mask
+
+    # Concatenate input_ids and attention_mask tensors for each example
+    input_ids = torch.cat([ex['input_ids'] for ex in tokenized_input], dim=0)
+    attention_mask = torch.cat([ex['attention_mask'] for ex in tokenized_input], dim=0)
+
+    batch = {'input_ids': input_ids, 'attention_mask': attention_mask}
     batch['image'] = torch.stack([example['image'] for example in examples])
 
     return batch
