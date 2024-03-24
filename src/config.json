@@ -19,8 +19,11 @@
     "project_name": "image-captioning",
     "ckpt_dir": "/home/vdhee/scratch/Nikhil/VA_LLM/checkpoints",
     "ckpt_freq": 1500,
+    "keep_last_n_checkpoints":20,
     "save_model_path": "best_model.pth",
-    "save_model_conn_path" : "best_model_conn.pth"
+    "save_model_conn_path" : "best_model_conn.pth",
+    "push_to_hub": true,
+    "hf_username": "IamYash"
   },
 
   "model_config": {
