@@ -1,6 +1,6 @@
 import torch.nn as nn
 import torch
-from transformers import  AutoModelForCausalLM, 
+from transformers import  AutoModelForCausalLM
 from transformers import CLIPProcessor, CLIPVisionModel
 from transformers.modeling_outputs import CausalLMOutput
 from torch.nn import functional as F
