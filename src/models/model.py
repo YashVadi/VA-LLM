@@ -1,9 +1,9 @@
 import torch.nn as nn
 import torch
-from transformers import  AutoModelForCausalLM, AutoModel
+from transformers import  AutoModelForCausalLM
 from transformers import CLIPProcessor, CLIPVisionModel
 from transformers.modeling_outputs import CausalLMOutput
-
+from torch.nn import functional as F
 from models.attention import MultiHeadCrossAttentionLayer
 from models.gpt_utils import gpt_ln_lmhead, gpt_modules, gpt_embed
 from models.stableLM_utils import stableLM_ln_lmhead, stableLM_modules, stableLM_embed
@@ -119,3 +119,41 @@ class VALLM(nn.Module):
             hidden_states=None,
             attentions=None,
         )
+    
+    def generate(self, input_ids, pixel_values, max_length=50, top_k=50, temperature=0.7, frequency_penalty=0.5, presence_penalty=0.5):
+        with torch.no_grad(): # Disable gradient calculation for efficiency
+            generated = input_ids # Initialize the generated sequence with the input
+            for _ in range(max_length - input_ids.size(1)):
+                outputs = self.forward(input_ids=generated, pixel_values=pixel_values) 
+                logits = outputs.logits # Extract logits
+                next_token_logits = logits[:, -1, :]
+                next_token_logits = next_token_logits / temperature
+                next_token_logits = top_k_logits(next_token_logits, top_k=top_k)
+                next_token_probs = F.softmax(next_token_logits, dim=-1)
+
+                # Apply frequency penalty
+                if frequency_penalty > 0:
+                    # Calculate token frequencies in the generated sequence
+                    token_counts = torch.bincount(generated.flatten(), minlength=logits.shape[-1])
+                    token_weights = torch.exp(-frequency_penalty * token_counts.float())
+                    next_token_probs *= token_weights
+
+                # Apply presence penalty (optional)
+                if presence_penalty > 0:
+                    # Calculate token presence in the generated sequence
+                    token_presence = torch.tensor([(token in generated.flatten().tolist()) for token in range(logits.shape[-1])], dtype=torch.float32, device=generated.device)
+                    next_token_probs *= torch.exp(-presence_penalty * token_presence)
+
+                next_token_probs = next_token_probs / torch.sum(next_token_probs, dim=-1, keepdim=True)
+                next_token_id = torch.multinomial(next_token_probs, num_samples=1) # Sample the next token
+                generated = torch.cat((generated, next_token_id), dim=-1) # Append the generated token to the sequence
+
+        return generated
+    
+def top_k_logits(logits, top_k: int):
+    if top_k == 0:
+        return logits
+    else:
+        values, _ = torch.topk(logits, top_k)
+        min_values = values[:, -1]
+        return torch.where(logits < min_values, torch.ones_like(logits) * -1e10, logits)

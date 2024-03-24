@@ -4,6 +4,7 @@ import torch
 from torch.utils.data import DataLoader
 from transformers import AdamW, get_linear_schedule_with_warmup
 from tqdm import tqdm
+from huggingface_hub import HfApi
 
 import wandb
 
@@ -37,6 +38,10 @@ class Trainer:
         project_name = logging_config['project_name']
         save_model_path = logging_config['save_model_path']
         save_model_conn_path = logging_config['save_model_conn_path']
+        self.keep_last_n_checkpoints = logging_config['keep_last_n_checkpoints']
+        self.push_to_hub = logging_config['push_to_hub']
+        if self.push_to_hub:
+            self.hf_urername = logging_config['hf_username']
 
         self.model = model(model_config).to(device)
         self.criterion = criterion
@@ -66,9 +71,16 @@ class Trainer:
         wandb.watch(self.model)
         self.run_id = wandb.run.id
         self.ckpt_dir = os.path.join(ckpt_dir, self.run_id)
-        os.makedirs(self.ckpt_dir, exist_ok=True)
 
+        os.makedirs(self.ckpt_dir, exist_ok=True)
         
+        if os.environ.get('HF_TOKEN') is None:
+            raise ValueError("Please set the HF_TOKEN environment variable to your Hugging Face API token")
+        
+        if self.push_to_hub:
+            self.hf_api = HfApi(token=os.environ['HF_TOKEN'])
+            self.hf_repo_id = self.hf_api.create_repo(f"{self.hf_urername}/VA-LLM-{self.run_id}")
+
     def logger(self, log_dict):
         wandb.log(log_dict)
 
@@ -92,9 +104,12 @@ class Trainer:
             self.step += 1
             self.logger({"Train Loss": loss.item(), "Step": self.step})
             if self.step % self.ckpt_freq == 0:
-                torch.save(self.model.state_dict(), os.path.join(self.ckpt_dir, "ckpt_" + str(self.step) + ".pth"))
+                # torch.save(self.model.state_dict(), os.path.join(self.ckpt_dir, "ckpt_" + str(self.step) + ".pth"))
                 torch.save(self.model.conn.state_dict(), os.path.join(self.ckpt_dir, "conn_ckpt_" + str(self.step) + ".pth"))
-            ## delete old checkpoints if there are more than max_checkpoints
+                self.delete_old_checkpoints()
+                if self.push_to_hub:
+                    self.upload_ckpt(os.path.join(self.ckpt_dir, "conn_ckpt_" + str(self.step) + ".pth"), run_as_future=True)
+
             self.prog_bar.set_postfix({"Train Loss": train_loss / (i+1)})
             self.prog_bar.update(1)
 
@@ -134,6 +149,9 @@ class Trainer:
                 self.best_loss = val_loss
                 torch.save(self.model.state_dict(), os.path.join(self.ckpt_dir, self.save_model_path))
                 torch.save(self.model.conn.state_dict(), os.path.join(self.ckpt_dir, self.save_model_conn_path))
+                if self.push_to_hub:
+                    self.upload_ckpt(os.path.join(self.ckpt_dir, self.save_model_path), run_as_future=True)
+                    self.upload_ckpt(os.path.join(self.ckpt_dir, self.save_model_conn_path), run_as_future=True)
                 self.counter = 0
             else:
                 self.counter += 1
@@ -141,6 +159,41 @@ class Trainer:
             if self.counter > self.early_stopping:
                 print(f"Early stopping at epoch {epoch}")
                 break
+    
+        self.prog_bar.close()
+        # generate 100 from the val_df and log it to wandb with image
+        # table = wandb.Table(columns=["Image", "Question", "Generated"])
+        # self.model.eval()
+        # with torch.no_grad():
+        #     for i, data in enumerate(self.val_loader.dataset, 0):
+        #         img = data['image'].to(self.device)
+        #         caption = data['input_ids'].to(self.device)
+        #         attention_mask = data['attention_mask'].to(self.device)
+        #         outputs = self.model.generate(input_ids=caption, pixel_values=img, attention_mask=attention_mask, max_length=100)
+        #         generated = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
+        #         table.add_data(img, self.tokenizer.decode(caption[0], skip_special_tokens=True), generated)
+        #         if i == 100:
+        #             break
+
+
         wandb.finish()
         
         return self.history
+    
+    def delete_old_checkpoints(self):
+        all_checkpoints = os.listdir(self.ckpt_dir)
+        all_checkpoints = [os.path.join(self.ckpt_dir, ckpt) for ckpt in all_checkpoints]
+        all_checkpoints = sorted(all_checkpoints, key=os.path.getctime, reverse=True)
+        for ckpt in all_checkpoints[self.keep_last_n_checkpoints:]:
+            os.remove(ckpt)
+
+    def upload_ckpt(self, ckpt_path, run_as_future=False):
+        model_name = os.path.basename(ckpt_path)
+        self.hf_api.upload_file(
+            repo_id=self.hf_repo_id,
+            path_or_fileobj=ckpt_path,
+            path_in_repo=f"model/{model_name}",
+            run_as_future=run_as_future,
+            repo_type="model",
+        )
+
