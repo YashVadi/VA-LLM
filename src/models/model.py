@@ -64,22 +64,38 @@ class VALLM(nn.Module):
         self.vit_conn = {elem[1]: elem[0] for elem in self.layer_connections}
         self.connections = {elem[0]: i for i, elem in enumerate(self.layer_connections)}
 
+        self.eval_mode = False
+        self.vit_cache = None
+
     def forward(self, input_ids, pixel_values, attention_mask=None, labels=None):
         device = input_ids.device
 
         cached_vit_hs = {}
 
-        # vit_hs = self.vit_processor(images=pixel_values)
-        vit_hs = self.vit.vision_model.embeddings(pixel_values)
-        vit_hs = self.vit.vision_model.pre_layrnorm(vit_hs)
+        # If inference mode is used and vision embeddings are cached,
+        # we retrieve them.
+        if self.eval_mode and self.vit_cache is not None:
+            cached_vit_hs = self.vit_cache
 
-        for i, layer_module in enumerate(self.vit.vision_model.encoder.layers):
-            vit_hs = layer_module(vit_hs, attention_mask=None, causal_attention_mask=None)[0]
-            if i in self.vit_conn.keys():
-                cached_vit_hs[i] = vit_hs
-            # break if the layer is the last layer we need to cache
-            if i == max(self.vit_conn.keys()):
-                break
+        # Otherwise, we calculate the embeddings.
+        else:
+            # vit_hs = self.vit_processor(images=pixel_values)
+            vit_hs = self.vit.vision_model.embeddings(pixel_values)
+            vit_hs = self.vit.vision_model.pre_layrnorm(vit_hs)
+
+            for i, layer_module in enumerate(self.vit.vision_model.encoder.layers):
+                vit_hs = layer_module(vit_hs, attention_mask=None, causal_attention_mask=None)[0]
+                if i in self.vit_conn.keys():
+                    cached_vit_hs[i] = vit_hs
+                # break if the layer is the last layer we need to cache
+                if i == max(self.vit_conn.keys()):
+                    break
+
+            # If inference mode is set to be true, then we cache the
+            # values. This is to handle the case when forward method
+            # is called for the first time during inference.
+            if self.eval_mode:
+                self.vit_cache = cached_vit_hs
         
         batch_size, seq_length = input_ids.shape
 
@@ -123,6 +139,7 @@ class VALLM(nn.Module):
     def generate(self, input_ids, pixel_values, max_length=50, top_k=50, temperature=0.7, frequency_penalty=0.5, presence_penalty=0.5):
         with torch.no_grad(): # Disable gradient calculation for efficiency
             generated = input_ids # Initialize the generated sequence with the input
+            self.eval_mode = True
             for _ in range(max_length - input_ids.size(1)):
                 outputs = self.forward(input_ids=generated, pixel_values=pixel_values) 
                 logits = outputs.logits # Extract logits
@@ -147,6 +164,9 @@ class VALLM(nn.Module):
                 next_token_probs = next_token_probs / torch.sum(next_token_probs, dim=-1, keepdim=True)
                 next_token_id = torch.multinomial(next_token_probs, num_samples=1) # Sample the next token
                 generated = torch.cat((generated, next_token_id), dim=-1) # Append the generated token to the sequence
+
+            self.eval_mode = False
+            self.vit_cache = None
 
         return generated
     
