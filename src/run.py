@@ -48,7 +48,7 @@ val_dataset = ImgDataset(val_df, root_dir=data_config['image_data_root'], tokeni
 
 def data_collator(examples):
 
-    batch= tokenizer([example['text'] for example in examples], padding="longest", return_tensors="pt", return_attention_mask=True, max_length="512")
+    batch= tokenizer([example['text'] for example in examples], padding="longest", return_tensors="pt", return_attention_mask=True, max_length=180, truncation=True)
     batch['image'] = torch.stack([example['image'] for example in examples])
 
     return batch
