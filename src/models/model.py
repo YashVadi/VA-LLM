@@ -2,7 +2,7 @@ import torch.nn as nn
 import torch
 from transformers import  AutoModelForCausalLM
 from transformers import CLIPProcessor, CLIPVisionModel
-from transformers.modeling_outputs import CausalLMOutput
+from transformers.modeling_outputs import CausalLMOutput, CausalLMOutputWithPast
 from torch.nn import functional as F
 from models.attention import MultiHeadCrossAttentionLayer
 from models.gpt_utils import gpt_ln_lmhead, gpt_modules, gpt_embed
@@ -11,6 +11,7 @@ from models.stableLM_utils import stableLM_ln_lmhead, stableLM_modules, stableLM
 # from gpt_utils import gpt_ln_lmhead, gpt_modules, gpt_embed
 # from stableLM_utils import stableLM_ln_lmhead, stableLM_modules, stableLM_embed
 from transformers.modeling_attn_mask_utils import _prepare_4d_causal_attention_mask
+from transformers.cache_utils import Cache, DynamicCache
 
 from torch.nn import CrossEntropyLoss 
 
@@ -67,7 +68,7 @@ class VALLM(nn.Module):
         self.eval_mode = False
         self.vit_cache = None
 
-    def forward(self, input_ids, pixel_values, attention_mask=None, labels=None):
+    def forward(self, input_ids, pixel_values, attention_mask=None, labels=None, past_key_values=None):
         device = input_ids.device
 
         cached_vit_hs = {}
@@ -98,6 +99,13 @@ class VALLM(nn.Module):
                 self.vit_cache = cached_vit_hs
         
         batch_size, seq_length = input_ids.shape
+        seq_length_with_past = seq_length
+        past_key_values_length = 0
+        use_legacy_cache = not isinstance(past_key_values, Cache)
+        if use_legacy_cache:
+            past_key_values = DynamicCache.from_legacy_cache(past_key_values)
+        past_key_values_length = past_key_values.get_usable_length(seq_length)
+        seq_length_with_past = seq_length_with_past + past_key_values_length
 
         llm_hs = self.llm_enc(self.llm, input_ids)
 
@@ -107,11 +115,11 @@ class VALLM(nn.Module):
         position_ids = torch.arange(seq_length, dtype=torch.long, device=device).unsqueeze(0).expand(batch_size, -1)
 
         attention_mask_4d = _prepare_4d_causal_attention_mask(
-            attention_mask, (batch_size, seq_length), llm_hs, 0
+            attention_mask, (batch_size, seq_length), llm_hs, past_key_values_length
         )
         
         for i, layer_module in enumerate(self.llm_blocks(self.llm)):
-            llm_hs = layer_module(llm_hs,attention_mask=attention_mask_4d, position_ids=position_ids)[0]
+            llm_hs = layer_module(llm_hs,attention_mask=attention_mask_4d, position_ids=position_ids, past_key_value=past_key_values)[0]
             if i in self.llm_conn.keys():
                 llm_hs = self.anchor_output_weight * llm_hs + self.augment_output_weight * self.conn[self.connections[i]](llm_hs , cached_vit_hs[self.llm_conn[i]])
         
@@ -129,9 +137,10 @@ class VALLM(nn.Module):
             loss = torch.sum(loss_batch * shift_masks.view(-1)) / torch.sum(shift_masks) 
 
 
-        return CausalLMOutput(
+        return CausalLMOutputWithPast(
             loss=loss,
             logits=logits,
+            past_key_values=past_key_values,
             hidden_states=None,
             attentions=None,
         )
@@ -140,8 +149,11 @@ class VALLM(nn.Module):
         with torch.no_grad(): # Disable gradient calculation for efficiency
             generated = input_ids # Initialize the generated sequence with the input
             self.eval_mode = True
+            past_key_values = DynamicCache()
             for _ in range(max_length - input_ids.size(1)):
-                outputs = self.forward(input_ids=generated, pixel_values=pixel_values) 
+                outputs = self.forward(input_ids=generated, pixel_values=pixel_values, past_key_values=past_key_values)
+                past_key_values = outputs.past_key_values
+
                 logits = outputs.logits # Extract logits
                 next_token_logits = logits[:, -1, :]
                 next_token_logits = next_token_logits / temperature
