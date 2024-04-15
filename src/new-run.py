@@ -16,7 +16,7 @@ try:
 except ImportError:
     BICUBIC = Image.BICUBIC
 
-config_path='/home/vdhee/scratch/Nikhil/VA_LLM/configs/config.json'
+config_path='/home/vdhee/scratch/Nikhil/VA_LLM/configs/config-new.json'
 config = json.load(open(config_path))
 training_config, model_config, data_config, logging_config = config['training_config'], config['model_config'], config['data_config'], config['logging_config']
 
@@ -41,8 +41,8 @@ transforms = Compose([
 
 train_df, val_df = train_test_split(df, test_size=data_config['test_size'], random_state=24)
 
-train_df = train_df[:1600]
-val_df = val_df[:1600]
+# train_df = train_df[:16]
+# val_df = val_df[:32]
 train_dataset = ImgDataset(train_df, root_dir=data_config['image_data_root'], tokenizer=tokenizer, transform=transforms)
 val_dataset = ImgDataset(val_df, root_dir=data_config['image_data_root'], tokenizer=tokenizer, transform=transforms)
 

@@ -14,8 +14,17 @@ class MultiHeadCrossAttentionLayer(nn.Module):
         self.num_heads = num_heads
         self.d_head = d_model // num_heads
         
+        # Linear layers with Xavier uniform initialization
         self.project_aug_1 = nn.Linear(d_context, d_model)
+        nn.init.xavier_uniform_(self.project_aug_1.weight)
+        nn.init.zeros_(self.project_aug_1.bias)  # Optional: zero initialization for biases
+        
         self.project_aug_2 = nn.Linear(d_model, d_model)
+        nn.init.xavier_uniform_(self.project_aug_2.weight)
+        nn.init.zeros_(self.project_aug_2.bias)  # Optional: zero initialization for biases
+        
+        # self.context_layer_norm = nn.LayerNorm(d_context)
+        # self.layer_norm = nn.LayerNorm(d_model)
         # Learnable weight matrices
         self.WQ = nn.Parameter(torch.randn(d_model, d_model), requires_grad=True)
         self.WK = nn.Parameter(torch.randn(d_model, d_model), requires_grad=True)
@@ -35,6 +44,10 @@ class MultiHeadCrossAttentionLayer(nn.Module):
 
         if attention_mask is None:
             attention_mask = torch.ones((batch_size, seq_length, context_seq_length), device=device)
+        
+        # layer norm for hidden states and context hidden states
+        # hidden_states = self.layer_norm(hidden_states)
+        # context_hidden_states = self.context_layer_norm(context_hidden_states)
         
         # Project the context hidden states
         context_hidden_states = F.gelu(self.project_aug_1(context_hidden_states))

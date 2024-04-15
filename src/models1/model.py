@@ -4,9 +4,9 @@ from transformers import  AutoModelForCausalLM
 from transformers import CLIPProcessor, CLIPVisionModel
 from transformers.modeling_outputs import CausalLMOutput
 from torch.nn import functional as F
-from models.attention import MultiHeadCrossAttentionLayer
-from models.gpt_utils import gpt_ln_lmhead, gpt_modules, gpt_embed
-from models.stableLM_utils import stableLM_ln_lmhead, stableLM_modules, stableLM_embed
+from models1.attention import MultiHeadCrossAttentionLayer
+from models1.gpt_utils import gpt_ln_lmhead, gpt_modules, gpt_embed
+from models1.stableLM_utils import stableLM_ln_lmhead, stableLM_modules, stableLM_embed
 # from attention import MultiHeadCrossAttentionLayer
 # from gpt_utils import gpt_ln_lmhead, gpt_modules, gpt_embed
 # from stableLM_utils import stableLM_ln_lmhead, stableLM_modules, stableLM_embed

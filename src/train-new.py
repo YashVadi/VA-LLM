@@ -107,17 +107,24 @@ class Trainer:
             attention_mask = data['attention_mask'].to(self.device)
             labels = caption.clone()
 
+            
             self.optimizer.zero_grad()
-            with autocast():  # Autocast for mixed precision
-                outputs = self.model(input_ids=caption, pixel_values=img, attention_mask=attention_mask, labels=labels)
-                loss = outputs.loss
+            outputs = self.model(input_ids=caption, pixel_values=img, attention_mask=attention_mask, labels=labels)
+            loss = outputs.loss
 
-            scaler.scale(loss).backward()  # Scale the loss and backpropagate
-            scaler.step(self.optimizer)  # Update the optimizer with the scaled gradients
-            scaler.update()  # Update the GradScaler for the next iteration
+            loss.backward()
+            self.optimizer.step()
             self.scheduler.step()
-
             train_loss += loss.item()
+            # with autocast():  # Autocast for mixed precision
+            #     outputs = self.model(input_ids=caption, pixel_values=img, attention_mask=attention_mask, labels=labels)
+            #     loss = outputs.loss
+
+            # scaler.scale(loss).backward()  # Scale the loss and backpropagate
+            # scaler.step(self.optimizer)  # Update the optimizer with the scaled gradients
+            # scaler.update()  # Update the GradScaler for the next iteration
+            # self.scheduler.step()
+
             self.step += 1
             train_lr = self.optimizer.param_groups[0]['lr']
             self.logger({"Train Loss": loss.item(), "Learning Rate": train_lr, "Step": self.step})
@@ -168,8 +175,9 @@ class Trainer:
                     top_k_acc[k].append((real_topk_pos < k).sum() / len(real_topk_pos))
         for k in [5, 10, 50, 100, 200, 500]:
             print(f"Top {k} accuracy: {np.mean(top_k_acc[k])}")
-        return val_loss
+
     
+
     
     def train(self):
         self.prog_bar = tqdm(range(len(self.train_loader)*self.n_epochs))
@@ -179,39 +187,36 @@ class Trainer:
         trainable_params = sum(p.numel() for p in self.model.parameters() if p.requires_grad)
         self.logger({"Total Parameters": total_params, "Trainable Parameters": trainable_params})
 
-        # for epoch in range(self.n_epochs):
-        #     train_loss = self.train_epoch()
-        #     val_loss = self.val_epoch()
+        for epoch in range(self.n_epochs):
+            train_loss = self.train_epoch()
+            val_loss = self.val_epoch()
             
-        #     self.logger({"Epoch": epoch, "Train Loss": train_loss, "Val Loss": val_loss})
-        #     self.history["train_loss"].append(train_loss)
-        #     self.history["val_loss"].append(val_loss)
 
-        #     if val_loss < self.best_loss:
-        #         self.best_loss = val_loss
-        #         # torch.save(self.model.state_dict(), os.path.join(self.ckpt_dir, self.save_model_path))
-        #         # torch.save(self.model.conn.state_dict(), os.path.join(self.ckpt_dir, self.save_model_conn_path))
-        #         self.best_model = self.model
-        #         if self.push_to_hub:
-        #             nikhil = 1
-        #             # self.upload_ckpt(os.path.join(self.ckpt_dir, self.save_model_path), run_as_future=False)
-        #             # self.upload_ckpt(os.path.join(self.ckpt_dir, self.save_model_conn_path), run_as_future=False)
-        #         self.counter = 0
-        #     else:
-        #         self.counter += 1
+            self.logger({"Epoch": epoch, "Train Loss": train_loss, "Val Loss": val_loss})
+            self.history["train_loss"].append(train_loss)
+            self.history["val_loss"].append(val_loss)
 
-        #     if self.counter > self.early_stopping:
-        #         print(f"Early stopping at epoch {epoch}")
-        #         break
+            if val_loss < self.best_loss:
+                self.best_loss = val_loss
+                torch.save(self.model.state_dict(), os.path.join(self.ckpt_dir, self.save_model_path))
+                torch.save(self.model.conn.state_dict(), os.path.join(self.ckpt_dir, self.save_model_conn_path))
+                self.best_model = self.model
+                if self.push_to_hub:
+                    self.upload_ckpt(os.path.join(self.ckpt_dir, self.save_model_path), run_as_future=False)
+                    self.upload_ckpt(os.path.join(self.ckpt_dir, self.save_model_conn_path), run_as_future=False)
+                self.counter = 0
+            else:
+                self.counter += 1
+
+            if self.counter > self.early_stopping:
+                print(f"Early stopping at epoch {epoch}")
+                break
     
         self.prog_bar.close()
         # generate 100 from the val_df and log it to wandb with image
         table = wandb.Table(columns=["Image", "Question", "Generated"])
-        # self.model.load_state_dict(torch.load(os.path.join(self.ckpt_dir, self.save_model_path), map_location=self.device))
-        # self.model.load_state_dict(torch.load("/home/vdhee/scratch/Nikhil/VA_LLM/checkpoints/gmw8hqsw/ckpt_4500.pth", map_location=self.device))
-        # /home/vdhee/scratch/Nikhil/VA_LLM/checkpoints/72911tog/ckpt_4500.pth
-        self.model.load_state_dict(torch.load("/home/vdhee/scratch/Nikhil/VA_LLM/checkpoints/72911tog/ckpt_4500.pth", map_location=self.device))
-        
+        self.model.load_state_dict(torch.load(os.path.join(self.ckpt_dir, self.save_model_path), map_location=self.device))
+
         self.model.eval()
         with torch.no_grad():
             for i, data in tqdm(enumerate(self.train_loader.dataset, 0)):
@@ -235,7 +240,7 @@ class Trainer:
                 generated = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
                 log_img = wandb.Image(Image.open(data['image_path']).convert("RGB"))
                 table.add_data(log_img, self.tokenizer.decode(caption[0], skip_special_tokens=True), generated)
-                if i == 5:
+                if i == 3:
                     break
             for i, data in tqdm(enumerate(self.val_loader.dataset, 0)):
                 img = data['image'].to(self.device)

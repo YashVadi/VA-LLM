@@ -2,9 +2,12 @@ import torch
 from torch.utils.data import Dataset
 import os
 from PIL import Image
+import pandas as pd
+from transformers import AutoTokenizer
+from torchvision import transforms
 
 class ImgDataset(Dataset):
-    def __init__(self, df, root_dir, tokenizer, transform=None, max_length=50):
+    def __init__(self, df, root_dir, tokenizer, transform=None, max_length=125):
         self.df = df
         self.transform = transform
         self.root_dir = root_dir
@@ -17,27 +20,26 @@ class ImgDataset(Dataset):
     def __getitem__(self,idx):
         caption = self.df.caption.iloc[idx]
         image = self.df.image.iloc[idx]
+        # img_path = os.path.join(self.root_dir , image)
         img_path = os.path.join(self.root_dir , image.split("/")[-1])
+        # img_path = "/home/vdhee/scratch/Nikhil/VA_LLM/coco/COCO_train2014_000000000049.jpg"
 
         img = Image.open(img_path).convert("RGB")
         
         if self.transform is not None:
             img= self.transform(img)
 
-        inputs = self.tokenizer.apply_chat_template(caption, add_generation_prompt=False, return_tensors='pt', return_dict=True, max_length=256, truncation=True)
-        # print(inputs)
-        # breakpoint()
+        captions = self.tokenizer(caption,
+                                 padding='max_length',
+                                 max_length=self.max_length,
+                                 truncation=True,
+                                 return_tensors='pt',)
         return {
-            'image': img,
-            'text': caption,
-            'image_path': img_path
-        }
-        # return {
-        #             'image': img,
-        #             'input_ids': inputs['input_ids'].squeeze(0),
-        #             'attention_mask': inputs['attention_mask'].squeeze(0),
-        #             'image_path': img_path
-        #         }
+                    'image': img,
+                    'input_ids': captions['input_ids'].squeeze(0),
+                    'attention_mask': captions['attention_mask'].squeeze(0),
+                    'image_path': img_path
+                }
 
 # df = pd.read_csv('data/captions.txt')
 # # print(df.head())

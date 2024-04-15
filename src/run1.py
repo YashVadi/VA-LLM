@@ -1,6 +1,6 @@
 import json
 from sklearn.model_selection import train_test_split
-from models.model import VALLM
+from models1.model import VALLM
 from dataloader_attn import ImgDataset
 import pandas as pd
 import torch
@@ -39,10 +39,10 @@ transforms = Compose([
         Normalize((0.48145466, 0.4578275, 0.40821073), (0.26862954, 0.26130258, 0.27577711)),
     ])
 
-train_df, val_df = train_test_split(df, test_size=data_config['test_size'], random_state=24)
+train_df, val_df = train_test_split(df, test_size=data_config['test_size'], random_state=42)
 
-train_df = train_df[:1600]
-val_df = val_df[:1600]
+# train_df = train_df[:16]
+# val_df = val_df[:32]
 train_dataset = ImgDataset(train_df, root_dir=data_config['image_data_root'], tokenizer=tokenizer, transform=transforms)
 val_dataset = ImgDataset(val_df, root_dir=data_config['image_data_root'], tokenizer=tokenizer, transform=transforms)
 
